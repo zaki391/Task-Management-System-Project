@@ -1,130 +1,99 @@
-const Project = require('../models/Project');
+const db = require('../config/db');
 
 // @desc    Get all projects
-// @route   GET /api/projects
-// @access  Private
-exports.getProjects = async (req, res, next) => {
+// @route   GET /projects
+const getProjects = async (req, res) => {
     try {
-        let query;
-
-        // If admin, can see all projects. If member, only projects they are part of.
-        if (req.user.role === 'admin') {
-            query = Project.find().populate('members', 'name email');
-        } else {
-            query = Project.find({ members: req.user.id }).populate('members', 'name email');
+        let query = {};
+        if (req.user.role !== 'admin') {
+            query.members = req.user._id;
         }
 
-        const projects = await query;
-
-        res.status(200).json({
-            success: true,
-            count: projects.length,
-            data: projects
-        });
+        const projects = await db.projects.find(query).sort({ createdAt: -1 });
+        res.json({ success: true, count: projects.length, data: projects });
     } catch (err) {
-        next(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
 // @desc    Get single project
-// @route   GET /api/projects/:id
-// @access  Private
-exports.getProject = async (req, res, next) => {
+// @route   GET /projects/:id
+const getProject = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id).populate('members', 'name email').populate('tasks');
+        const project = await db.projects.findOne({ _id: req.params.id });
 
         if (!project) {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // Check if user is member or admin
-        if (req.user.role !== 'admin' && !project.members.some(m => m._id.toString() === req.user.id)) {
-            return res.status(401).json({ success: false, message: 'Not authorized to access this project' });
-        }
-
-        res.status(200).json({
-            success: true,
-            data: project
-        });
+        res.json({ success: true, data: project });
     } catch (err) {
-        next(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
 // @desc    Create project
-// @route   POST /api/projects
-// @access  Private (Admin only usually, but let's allow members to create their own)
-exports.createProject = async (req, res, next) => {
+// @route   POST /projects
+const createProject = async (req, res) => {
     try {
-        // Add user to req.body as owner and first member
-        req.body.owner = req.user.id;
-        if (!req.body.members) req.body.members = [req.user.id];
-        else if (!req.body.members.includes(req.user.id)) req.body.members.push(req.user.id);
+        req.body.owner = req.user._id;
+        if (!req.body.members) req.body.members = [req.user._id];
+        else if (!req.body.members.includes(req.user._id)) req.body.members.push(req.user._id);
 
-        const project = await Project.create(req.body);
-
-        res.status(201).json({
-            success: true,
-            data: project
+        const project = await db.projects.insert({
+            ...req.body,
+            createdAt: new Date()
         });
+
+        res.status(201).json({ success: true, data: project });
     } catch (err) {
-        next(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
 // @desc    Update project
-// @route   PUT /api/projects/:id
-// @access  Private
-exports.updateProject = async (req, res, next) => {
+// @route   PUT /projects/:id
+const updateProject = async (req, res) => {
     try {
-        let project = await Project.findById(req.params.id);
+        const project = await db.projects.update(
+            { _id: req.params.id },
+            { $set: req.body },
+            { returnUpdatedDocs: true }
+        );
 
         if (!project) {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // Check ownership or admin
-        if (project.owner.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({ success: false, message: 'Not authorized to update this project' });
-        }
-
-        project = await Project.findByIdAndUpdate(req.params.id, req.body, {
-            new: true,
-            runValidators: true
-        });
-
-        res.status(200).json({
-            success: true,
-            data: project
-        });
+        res.json({ success: true, data: project });
     } catch (err) {
-        next(err);
+        res.status(500).json({ success: false, message: err.message });
     }
 };
 
 // @desc    Delete project
-// @route   DELETE /api/projects/:id
-// @access  Private
-exports.deleteProject = async (req, res, next) => {
+// @route   DELETE /projects/:id
+const deleteProject = async (req, res) => {
     try {
-        const project = await Project.findById(req.params.id);
+        const numRemoved = await db.projects.remove({ _id: req.params.id });
 
-        if (!project) {
+        if (numRemoved === 0) {
             return res.status(404).json({ success: false, message: 'Project not found' });
         }
 
-        // Check ownership or admin
-        if (project.owner.toString() !== req.user.id && req.user.role !== 'admin') {
-            return res.status(401).json({ success: false, message: 'Not authorized to delete this project' });
-        }
+        // Also delete tasks associated with this project
+        await db.tasks.remove({ project: req.params.id }, { multi: true });
 
-        await project.deleteOne();
-
-        res.status(200).json({
-            success: true,
-            data: {}
-        });
+        res.json({ success: true, data: {} });
     } catch (err) {
-        next(err);
+        res.status(500).json({ success: false, message: err.message });
     }
+};
+
+module.exports = {
+    getProjects,
+    getProject,
+    createProject,
+    updateProject,
+    deleteProject
 };

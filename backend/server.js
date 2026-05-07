@@ -2,7 +2,6 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const mongoose = require('mongoose');
 const helmet = require('helmet');
 const morgan = require('morgan');
 
@@ -15,32 +14,12 @@ const userRoutes = require('./src/routes/userRoutes');
 const errorHandler = require('./src/middlewares/errorHandler');
 const notFoundHandler = require('./src/middlewares/notFoundHandler');
 
-const { MongoMemoryServer } = require('mongodb-memory-server');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Connect to MongoDB
-const connectDB = async () => {
-    try {
-        await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 3000,
-        });
-        console.log('Connected to MongoDB');
-    } catch (err) {
-        if (process.env.VERCEL) {
-            console.error('MongoDB connection failed on Vercel. Please provide a valid MONGODB_URI in environment variables.');
-            throw err;
-        }
-        console.warn('Local MongoDB connection failed. Starting In-Memory MongoDB fallback...');
-        const mongod = await MongoMemoryServer.create();
-        const uri = mongod.getUri();
-        await mongoose.connect(uri);
-        console.log('Connected to In-Memory MongoDB (Data will be lost on restart)');
-    }
-};
-
-connectDB();
+// NeDB is initialized in src/config/db.js and doesn't require a separate connection call.
+console.log('Using NeDB zero-config database');
 
 // Middleware
 app.use(helmet({
