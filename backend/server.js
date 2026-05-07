@@ -24,10 +24,14 @@ const PORT = process.env.PORT || 3000;
 const connectDB = async () => {
     try {
         await mongoose.connect(process.env.MONGODB_URI, {
-            serverSelectionTimeoutMS: 5000,
+            serverSelectionTimeoutMS: 3000,
         });
         console.log('Connected to MongoDB');
     } catch (err) {
+        if (process.env.VERCEL) {
+            console.error('MongoDB connection failed on Vercel. Please provide a valid MONGODB_URI in environment variables.');
+            throw err;
+        }
         console.warn('Local MongoDB connection failed. Starting In-Memory MongoDB fallback...');
         const mongod = await MongoMemoryServer.create();
         const uri = mongod.getUri();
